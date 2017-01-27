@@ -1,4 +1,4 @@
-include <SPI.h>
+#include <SPI.h>
 #include <SparkFunSi4703.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -34,7 +34,7 @@ int channel;
 
 float volts;
 boolean lowVolts = false;
-unsigned long cutOffTimer;
+unsigned long timerLowVoltage;
 
 
 #define MAXFREQ 5 
@@ -58,8 +58,8 @@ char currentName[20];
 char rdsBuffer[20];
 
 
-unsigned long timerUpdate;               // Display update timer
-unsigned long timerUpdateTime = 300000;  // Display update set time (5 minutes).
+unsigned long timerDisplayUpdate;       // Display update timer
+#define DisplayUpdateDelay 300000  // Display update set time (5 minutes).
 
 boolean oledIsOn;
 
@@ -84,19 +84,19 @@ void setup() {
   volts = readVcc();
   updateDisplay();
   
-  timerUpdate = millis();
+  timerDisplayUpdate = millis();
   delay(500);
-  Serial.println("Adafruit Radio - Si4713 Test");
+  Serial.println("Adafruit Radio - Si4703 ");
 }
 
 void loop() {
    volts = readVcc();
    if (volts >= lowVoltsCutoff) { 
-     cutOffTimer = millis();                                  // Battery volts ok so keep resetting cutoff timer.
+     timerLowVoltage = millis();                             // Battery volts ok so keep resetting cutoff timer.
    }
     
-   if (millis() > (cutOffTimer + 5000)) {                     // Allow 5 seconds for momentary volt drops.
-      digitalWrite(oledVcc, LOW);                             // Kill power to display
+   if (millis() > (timerLowVoltage + 5000)) {                // more than 5 seconds with low Voltage ?
+      digitalWrite(oledVcc, LOW);                            // Kill power to display
       
       Wire.beginTransmission(SI4703Address);                 // Put Si4703 tuner into power down mode.
       Wire.write(0x00);
@@ -114,9 +114,9 @@ void loop() {
 
   // Update display and battery voltage reading every timerUpdateTime (5 mins).
   // Don't update too often because it causes a slight click on the radio.
-   if (millis() > (timerUpdate + timerUpdateTime) ) {
+   if (millis() > (timerDisplayUpdate + DisplayUpdateDelay) ) {
      updateDisplay();
-     timerUpdate = millis();
+     timerDisplayUpdate = millis();
    }
    
   if (digitalRead(push) == LOW) {
@@ -125,40 +125,37 @@ void loop() {
      radio.readRDS(currentName, 1000);
      Serial.println(currentName);
 */
-     updateDisplay(); 
  
     if (oledIsOn == true) {
       stopOled();
     } else  {
       startOled();
     }
-    delay(500);
   }
+
    
   if (digitalRead(volUp) == LOW) {
     if (volume < 15) volume++; 
     radio.setVolume(volume);
-    delay(100);
   }
+  
   if (digitalRead(volDown) == LOW) {
      if (volume > 0) volume--;
      radio.setVolume(volume);
-     delay(100);
   }  
   
   if (digitalRead(channelUp) == LOW) {
      startOled();
      changeChannel(+1);
-     updateDisplay();
-     delay(500);
   }
   
   if (digitalRead(channelDown) == LOW) {
      startOled();
      changeChannel(-1);
-     updateDisplay();
-     delay(500);
   }
+
+  updateDisplay();
+  delay(500);
 }
 
 
