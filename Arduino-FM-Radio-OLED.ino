@@ -22,8 +22,8 @@
 #define push           11
 
 //********************* Battery ************************************** 
-#define lowVoltageWarning  1180    // Warn low battery volts.
-#define lowVoltsCutoff     1100    // Kill power to display and sleep ATmega328.
+#define lowVoltageWarning  3180    // Warn low battery volts.
+#define lowVoltsCutoff     3100    // Kill power to display and sleep ATmega328.
 
 
 //************************** OLED ************************************
