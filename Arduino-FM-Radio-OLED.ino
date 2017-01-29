@@ -1,5 +1,5 @@
 #include <SPI.h>
-#include <SparkFunSi4703.h>
+#include <Si4703_Breakout.h> // https://github.com/Chnalex/Si4703_FM_Tuner_Evaluation_Board/tree/master/Libraries/Si4703_Breakout
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -21,15 +21,24 @@
 #define channelUp      10
 #define push           11
 
-// Battery 
-#define lowVoltageWarning  3180    // Warn low battery volts.
-#define lowVoltsCutoff     3100    // Kill power to display and sleep ATmega328.
+//********************* Battery ************************************** 
+#define lowVoltageWarning  1180    // Warn low battery volts.
+#define lowVoltsCutoff     1100    // Kill power to display and sleep ATmega328.
 
 
-Adafruit_SSD1306 oled(8);
-Si4703_Breakout radio(resetRadio, A4, A5);   // Start radio
+//************************** OLED ************************************
+#if ( SSD1306_LCDHEIGHT != 64 )
+#error( "Height incorrect, please fix Adafruit_SSD1306.h!" );
+#endif
 
-int volume = 6;
+#define OLED_RESET 8
+Adafruit_SSD1306 oled(OLED_RESET);
+
+
+//************************** RADIO **********************************
+Si4703_Breakout radio(resetRadio, A4, A5,0);
+
+int volume = 5;
 int channel;
 
 float volts;
@@ -47,9 +56,9 @@ unsigned int presetFreq[MAXFREQ] = {
  };
   
 char* presetNames[MAXFREQ] = {
-  "FRANCE INFO",
-  "FRANCE MUSIQUE",
-  "RIRE ET CHANSONS",
+  "F-INFO",
+  "F-MUS",
+  "RIRE",
   "RTL",
   "RTL 2",
   };
@@ -73,7 +82,7 @@ void setup() {
   pinMode(channelDown, INPUT_PULLUP);  
   pinMode(push, INPUT_PULLUP);
   pinMode(oledVcc, OUTPUT);
-  
+
   oledIsOn = false;
   startOled();
 
@@ -120,17 +129,15 @@ void loop() {
    }
    
   if (digitalRead(push) == LOW) {
-     currentFreq = radio.seekUp();
-/*
-     radio.readRDS(currentName, 1000);
-     Serial.println(currentName);
-*/
- 
-    if (oledIsOn == true) {
+     currentFreq = radio.seekUp();        
+     radio.readPS(currentName, 2000);
+
+ /*   if (oledIsOn == true) {
       stopOled();
     } else  {
       startOled();
     }
+    */
   }
 
    
@@ -155,7 +162,7 @@ void loop() {
   }
 
   updateDisplay();
-  delay(500);
+  delay(200);
 }
 
 
@@ -202,21 +209,24 @@ void updateDisplay() {
       oled.print((float)currentFreq / 10, 1); 
       oled.print(" FM");
       Serial.println((float)currentFreq / 10);
-
     }
     oled.setCursor(80, 8);
     oled.print(volts/1000);
-    oled.print("v");  
-    
+    oled.print("v"); 
+
+    oled.setCursor(80, 50);
+    int level = radio.getRSSI();
+    oled.fillRect(0,  62, level*3, 2, WHITE);
+    oled.fillRect(120,  64-(volume*3), 2, 64, WHITE);
     
     
     if (lowVolts) {
       oled.dim(true);
-      oled.setTextSize(1);
+      oled.setTextSize(2);
       oled.setCursor(35,28);
       oled.print("LOW BATT");
     } else {
-      oled.setTextSize(1);
+      oled.setTextSize(2);
       oled.setCursor(5,28);
       oled.print(currentName);  
     }
