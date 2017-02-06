@@ -1,14 +1,11 @@
-#include <SPI.h>
-#include <Si4703_Breakout.h> // https://github.com/Chnalex/Si4703_FM_Tuner_Evaluation_Board/tree/master/Libraries/Si4703_Breakout
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
+#include <SI4703.h>     // http://www.mathertel.de/Arduino/RadioLibrary.aspx
+#include <RDSParser.h>
 #include "LowPower.h"
 #include <EEPROM.h>
+#include <U8g2lib.h>
 
-#define SI4703Address 0x10
-#define oledAddress 0x3c
+
 #define EEPROM_Channel_SAVED   0           // EEPROM locations
 
 // Pin connection
@@ -22,21 +19,24 @@
 #define push           11
 
 //********************* Battery ************************************** 
-#define lowVoltageWarning  3180    // Warn low battery volts.
-#define lowVoltsCutoff     3100    // Kill power to display and sleep ATmega328.
+#define lowVoltageWarning  180    // Warn low battery volts.
+#define lowVoltsCutoff     100    // Kill power to display and sleep ATmega328.
 
 
 //************************** OLED ************************************
-#if ( SSD1306_LCDHEIGHT != 64 )
-#error( "Height incorrect, please fix Adafruit_SSD1306.h!" );
-#endif
-
-#define OLED_RESET 8
-Adafruit_SSD1306 oled(OLED_RESET);
+//U8G2_SSD1306_128X64_NONAME_1_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);  
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 
 
 //************************** RADIO **********************************
-Si4703_Breakout radio(resetRadio, A4, A5,0);
+SI4703 radio;
+RADIO_INFO ri;
+
+/// get a RDS parser
+RDSParser rds;
+uint16_t g_block1;
+char RDSName[18];
+
 
 int volume = 5;
 int channel;
@@ -44,28 +44,6 @@ int channel;
 float volts;
 boolean lowVolts = false;
 unsigned long timerLowVoltage;
-
-
-#define MAXFREQ 5 
-unsigned int presetFreq[MAXFREQ] = {
-  1044, 
-  929, 
-  910, 
-  1040, 
-  1060, 
- };
-  
-char* presetNames[MAXFREQ] = {
-  "F-INFO",
-  "F-MUS",
-  "RIRE",
-  "RTL",
-  "RTL 2",
-  };
-unsigned int currentFreq;
-char currentName[20];
-char rdsBuffer[20];
-
 
 unsigned long timerDisplayUpdate;       // Display update timer
 #define DisplayUpdateDelay 300000  // Display update set time (5 minutes).
@@ -75,7 +53,6 @@ boolean oledIsOn;
 
 void setup() {
   Serial.begin(9600);
-
   pinMode(volDown, INPUT_PULLUP);
   pinMode(volUp, INPUT_PULLUP);
   pinMode(channelUp, INPUT_PULLUP);
@@ -85,20 +62,31 @@ void setup() {
 
   oledIsOn = false;
   startOled();
-
-  radio.powerOn();
+  
+  radio.init();
+//  radio.debugEnable();    //debug infos to the Serial port
+  radio.setBandFrequency(RADIO_BAND_FM, 8930);
+  radio.setMono(false);
+  radio.setMute(false);
   radio.setVolume(volume);
-  
-  channel = constrain(EEPROM.read(EEPROM_Channel_SAVED), 0, MAXFREQ-1);
-  volts = readVcc();
-  updateDisplay();
-  
-  timerDisplayUpdate = millis();
+
+  // setup the information chain for RDS data.
+  radio.attachReceiveRDS(RDS_process);
+  rds.attachServicenNameCallback(DisplayRDSName);
+    
   delay(500);
-  Serial.println("Adafruit Radio - Si4703 ");
+  Serial.println(F("Adafruit Radio - Si4703 "));
+  u8g2.begin();
 }
 
+
+
+
+
 void loop() {
+   radio.checkRDS();
+   u8g2.firstPage();
+   timerDisplayUpdate = millis();
    volts = readVcc();
    if (volts >= lowVoltsCutoff) { 
      timerLowVoltage = millis();                             // Battery volts ok so keep resetting cutoff timer.
@@ -107,7 +95,7 @@ void loop() {
    if (millis() > (timerLowVoltage + 5000)) {                // more than 5 seconds with low Voltage ?
       digitalWrite(oledVcc, LOW);                            // Kill power to display
       
-      Wire.beginTransmission(SI4703Address);                 // Put Si4703 tuner into power down mode.
+      //Wire.beginTransmission(SI4703Address);                 // Put Si4703 tuner into power down mode.
       Wire.write(0x00);
       Wire.write(0x41);
       Wire.endTransmission(true);
@@ -121,26 +109,17 @@ void loop() {
    }   
    
 
-  // Update display and battery voltage reading every timerUpdateTime (5 mins).
-  // Don't update too often because it causes a slight click on the radio.
    if (millis() > (timerDisplayUpdate + DisplayUpdateDelay) ) {
      updateDisplay();
      timerDisplayUpdate = millis();
    }
    
   if (digitalRead(push) == LOW) {
-     currentFreq = radio.seekUp();        
-     radio.readPS(currentName, 2000);
-
- /*   if (oledIsOn == true) {
-      stopOled();
-    } else  {
-      startOled();
-    }
-    */
+     radio.seekUp(true);        
   }
 
-   
+
+
   if (digitalRead(volUp) == LOW) {
     if (volume < 15) volume++; 
     radio.setVolume(volume);
@@ -153,34 +132,61 @@ void loop() {
   
   if (digitalRead(channelUp) == LOW) {
      startOled();
-     changeChannel(+1);
+     Serial.println(F("UP"));
+     seekAuto(radio.getFrequencyStep());
   }
   
   if (digitalRead(channelDown) == LOW) {
      startOled();
-     changeChannel(-1);
+     Serial.println(F("DOWN"));
+     seekAuto(-radio.getFrequencyStep());
   }
-
   updateDisplay();
-  delay(200);
 }
 
 
 
-
-
-void changeChannel(int d) {
-     channel+=d;
-     if (channel < 0) channel = MAXFREQ-1;
-     if (channel >= MAXFREQ) channel = 0;
-
-     currentFreq = presetFreq[channel];
-     radio.setChannel(currentFreq);
-     if (EEPROM.read(EEPROM_Channel_SAVED) != channel) {
-       EEPROM.write(EEPROM_Channel_SAVED, channel);
-     }
-     strcpy(currentName, presetNames[channel]);
+void RDS_process(uint16_t block1, uint16_t block2, uint16_t block3, uint16_t block4) {
+  g_block1 = block1;
+  rds.processData(block1, block2, block3, block4);
 }
+
+
+void DisplayRDSName(char *name)
+{
+  bool found = false;
+
+  for (uint8_t n = 0; n < 8; n++)
+    if (name[n] != ' ') found = true;
+
+  if (found) {
+    for (uint8_t n = 0; n < 8; n++) RDSName[n]  = name[n];
+    RDSName[8]  = 0;
+  }
+} 
+
+
+
+
+void seekAuto (int step)
+{
+    while (1) {
+      RADIO_FREQ f = radio.getFrequency() + step;
+      if (f >radio.getMaxFrequency())  f = radio.getMinFrequency();    
+      if (f <radio.getMinFrequency())  f = radio.getMaxFrequency();    
+      radio.setFrequency(f);
+      sprintf(RDSName, "%d.%02d MHz", (unsigned int)f/100, (unsigned int)f%100);
+      updateDisplay();
+      delay(100);
+      radio.getRadioInfo(&ri);      
+      if (ri.rssi>10  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
+        break;
+      } else {
+        f += radio.getFrequencyStep();
+      } 
+    } 
+}
+
 
 
 
@@ -193,45 +199,44 @@ void stopOled() {
 void startOled() {
     if (oledIsOn == false) { 
       digitalWrite(oledVcc, HIGH);
-      delay(500);
-      oledIsOn = true;
-      oled.begin(SSD1306_SWITCHCAPVCC, oledAddress);
-  }  
+      delay(1000);
+      u8g2.begin();
+    }  
 }  
 
-    
-void updateDisplay() {
-    oled.clearDisplay();   
-    oled.setTextColor(WHITE);
-    oled.setTextSize(1);
-    oled.setCursor(10,8);
-    if (!lowVolts) {
-      oled.print((float)currentFreq / 10, 1); 
-      oled.print(" FM");
-      Serial.println((float)currentFreq / 10);
-    }
-    oled.setCursor(80, 8);
-    oled.print(volts/1000);
-    oled.print("v"); 
 
-    oled.setCursor(80, 50);
-    int level = radio.getRSSI();
-    oled.fillRect(0,  62, level*3, 2, WHITE);
-    oled.fillRect(120,  64-(volume*3), 2, 64, WHITE);
+
+void updateDisplay() {
+    radio.getRadioInfo(&ri);
+
+  u8g2.firstPage();
+  u8g2.setFont(u8g2_font_5x7_tr);
+  do {  
+    char buf[9];
+
+    int level = ri.rssi;
+    u8g2.drawBox(0,  62, level*3, 2);
+    u8g2.drawBox(120,  64-(volume*3), 2, 64);
     
-    
-    if (lowVolts) {
-      oled.dim(true);
-      oled.setTextSize(2);
-      oled.setCursor(35,28);
-      oled.print("LOW BATT");
-    } else {
-      oled.setTextSize(2);
-      oled.setCursor(5,28);
-      oled.print(currentName);  
+    if (!lowVolts) {
+      sprintf(buf, "%d.%02d MHz", (int)radio.getFrequency() / 100, (int)(radio.getFrequency())%100);
+      u8g2.drawStr(10,8, buf);
     }
-    oled.display();   
+    sprintf(buf, "%d.%02d", (int)volts/1000, (int)(volts/10)%100);
+    u8g2.drawStr(80,8, buf);
+
+        
+    u8g2.setFont(u8g2_font_ncenB14_tr);
+    if (lowVolts) {
+      u8g2.drawStr(0,35, "LOW BAT");
+    } else {
+      u8g2.drawStr(0, 35, RDSName);
+    }
+    } while( u8g2.nextPage() );
+
 }
+
+
 
 
 
