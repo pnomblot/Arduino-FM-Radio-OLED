@@ -1,15 +1,15 @@
 #include <Wire.h>
-#include <SI4703.h>     // http://www.mathertel.de/Arduino/RadioLibrary.aspx
+#include <SI4703.h>     // http://www.mathertel.de/Arduino/RadioLibrary.aspx  https://github.com/mathertel/Radio
 #include <RDSParser.h>
 #include "LowPower.h"
 #include <EEPROM.h>
 #include <U8g2lib.h>
 
 
-#define EEPROM_Channel_SAVED   0           // EEPROM locations
+#define EEPROM_FreqH    0      // EEPROM locations
+#define EEPROM_FreqL    1      // EEPROM locations
 
 // Pin connection
-
 #define resetRadio     2
 #define oledVcc        3
 #define channelDown    7
@@ -24,31 +24,23 @@
 
 
 //************************** OLED ************************************
-//U8G2_SSD1306_128X64_NONAME_1_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);  
 U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 
 
 //************************** RADIO **********************************
-SI4703 radio;
-RADIO_INFO ri;
 
-/// get a RDS parser
-RDSParser rds;
-uint16_t g_block1;
-char RDSName[18];
-
-
+//uint16_t g_block1;
+char tmp[12];
+char RDSName[12];
+RADIO_FREQ freq;
 int volume = 5;
-int channel;
-
 float volts;
 boolean lowVolts = false;
 unsigned long timerLowVoltage;
-
-unsigned long timerDisplayUpdate;       // Display update timer
-#define DisplayUpdateDelay 300000  // Display update set time (5 minutes).
-
 boolean oledIsOn;
+RADIO_INFO ri;
+RDSParser rds;
+SI4703 radio;
 
 
 void setup() {
@@ -62,20 +54,24 @@ void setup() {
 
   oledIsOn = false;
   startOled();
+  Serial.println(F("Adafruit Radio - Si4703 "));
   
   radio.init();
 //  radio.debugEnable();    //debug infos to the Serial port
-  radio.setBandFrequency(RADIO_BAND_FM, 8930);
+  EEPROMReadFreq();
+  sprintf(RDSName, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
+
+  radio.setBandFrequency(RADIO_BAND_FM,freq);
   radio.setMono(false);
   radio.setMute(false);
   radio.setVolume(volume);
 
+  
   // setup the information chain for RDS data.
   radio.attachReceiveRDS(RDS_process);
   rds.attachServicenNameCallback(DisplayRDSName);
-    
+
   delay(500);
-  Serial.println(F("Adafruit Radio - Si4703 "));
   u8g2.begin();
 }
 
@@ -86,7 +82,6 @@ void setup() {
 void loop() {
    radio.checkRDS();
    u8g2.firstPage();
-   timerDisplayUpdate = millis();
    volts = readVcc();
    if (volts >= lowVoltsCutoff) { 
      timerLowVoltage = millis();                             // Battery volts ok so keep resetting cutoff timer.
@@ -108,17 +103,12 @@ void loop() {
      updateDisplay();
    }   
    
-
-   if (millis() > (timerDisplayUpdate + DisplayUpdateDelay) ) {
-     updateDisplay();
-     timerDisplayUpdate = millis();
-   }
    
+
+
   if (digitalRead(push) == LOW) {
-     radio.seekUp(true);        
+      EEPROMSaveFreq();
   }
-
-
 
   if (digitalRead(volUp) == LOW) {
     if (volume < 15) volume++; 
@@ -132,13 +122,11 @@ void loop() {
   
   if (digitalRead(channelUp) == LOW) {
      startOled();
-     Serial.println(F("UP"));
      seekAuto(radio.getFrequencyStep());
   }
   
   if (digitalRead(channelDown) == LOW) {
      startOled();
-     Serial.println(F("DOWN"));
      seekAuto(-radio.getFrequencyStep());
   }
   updateDisplay();
@@ -147,7 +135,7 @@ void loop() {
 
 
 void RDS_process(uint16_t block1, uint16_t block2, uint16_t block3, uint16_t block4) {
-  g_block1 = block1;
+//  g_block1 = block1;
   rds.processData(block1, block2, block3, block4);
 }
 
@@ -171,24 +159,35 @@ void DisplayRDSName(char *name)
 void seekAuto (int step)
 {
     while (1) {
-      RADIO_FREQ f = radio.getFrequency() + step;
-      if (f >radio.getMaxFrequency())  f = radio.getMinFrequency();    
-      if (f <radio.getMinFrequency())  f = radio.getMaxFrequency();    
-      radio.setFrequency(f);
-      sprintf(RDSName, "%d.%02d MHz", (unsigned int)f/100, (unsigned int)f%100);
+      freq = radio.getFrequency() + step;
+      if (freq >radio.getMaxFrequency())  freq = radio.getMinFrequency();    
+      if (freq <radio.getMinFrequency())  freq = radio.getMaxFrequency();
+      radio.clearRDS();
+      sprintf(RDSName, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
+
+      radio.setFrequency(freq);
       updateDisplay();
       delay(100);
       radio.getRadioInfo(&ri);      
-      if (ri.rssi>10  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
+      if (ri.rssi>8  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
         break;
       } else {
-        f += radio.getFrequencyStep();
+        freq += radio.getFrequencyStep();
       } 
     } 
+
+  EEPROMSaveFreq();
 }
 
 
+void EEPROMSaveFreq() {
+  EEPROM.write(EEPROM_FreqL, (unsigned char)(freq & 0xFF));
+  EEPROM.write(EEPROM_FreqH, (unsigned char)((freq>>8) & 0xFF));
+}
 
+void EEPROMReadFreq() {
+  freq =  EEPROM.read(EEPROM_FreqL) + (EEPROM.read(EEPROM_FreqH) << 8) ;
+}
 
 void stopOled() {
   digitalWrite(oledVcc, LOW);
@@ -207,30 +206,30 @@ void startOled() {
 
 
 void updateDisplay() {
-    radio.getRadioInfo(&ri);
+  radio.getRadioInfo(&ri);
 
   u8g2.firstPage();
   u8g2.setFont(u8g2_font_5x7_tr);
   do {  
-    char buf[9];
-
-    int level = ri.rssi;
-    u8g2.drawBox(0,  62, level*3, 2);
-    u8g2.drawBox(120,  64-(volume*3), 2, 64);
-    
     if (!lowVolts) {
-      sprintf(buf, "%d.%02d MHz", (int)radio.getFrequency() / 100, (int)(radio.getFrequency())%100);
-      u8g2.drawStr(10,8, buf);
+      sprintf(tmp, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
+      u8g2.drawStr(0,8, tmp);
     }
-    sprintf(buf, "%d.%02d", (int)volts/1000, (int)(volts/10)%100);
-    u8g2.drawStr(80,8, buf);
+    sprintf(tmp, "%d.%02d", (int)volts/1000, (int)(volts/10)%100);
+    //u8g2.drawStr(100,8, tmp);
 
-        
-    u8g2.setFont(u8g2_font_ncenB14_tr);
+    for (unsigned char i=0; i<(ri.rssi/4); i++) {
+      u8g2.drawVLine(98+(2*i), 8-i, i);
+    }
+    
+    u8g2.drawFrame(80, 0, 4, 8);  
+    u8g2.drawBox(80, 8-(volume/2), 4, volume/2);
+ 
+    u8g2.setFont(u8g2_font_fub14_tf);
     if (lowVolts) {
-      u8g2.drawStr(0,35, "LOW BAT");
+      u8g2.drawStr(0,40, "LOW BAT");
     } else {
-      u8g2.drawStr(0, 35, RDSName);
+      u8g2.drawStr(0,40, RDSName);
     }
     } while( u8g2.nextPage() );
 
