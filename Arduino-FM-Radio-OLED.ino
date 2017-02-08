@@ -34,7 +34,7 @@
 // VOLUME LEVEL 
 #define VOL_X_POS  90
 #define VOL_Y_POS   0
-#define VOL_WIDTH   4
+#define VOL_WIDTH   3
 #define VOL_HEIGHT  8
 
 // RADIO LEVEL
@@ -250,7 +250,7 @@ void updateDisplay() {
     u8g2.drawBox(VOL_X_POS, VOL_Y_POS+VOL_HEIGHT-(volume/2), VOL_WIDTH, volume/2);
 
     // RADIO
-    for (unsigned char i=0; i<(ri.rssi/8); i++) {
+    for (unsigned char i=0; i<(ri.rssi/4); i++) {
       u8g2.drawVLine(RADIO_LEVEL_X_POS+(2*i), RADIO_LEVEL_Y_POS-i, i);
     }
     
