@@ -19,8 +19,28 @@
 #define push           11
 
 //********************* Battery ************************************** 
-#define lowVoltageWarning  180    // Warn low battery volts.
-#define lowVoltsCutoff     100    // Kill power to display and sleep ATmega328.
+#define lowVoltageWarning  2180    // Warn low battery volts.
+#define lowVoltsCutoff     2900    // Kill power to display and sleep ATmega328.
+
+//********************* icons **************************************** 
+// BATTERY LEVEL 
+#define BAT_X_POS  72
+#define BAT_Y_POS   2 
+#define BAT_HEIGHT  6
+#define BAT_LENGTH  8
+#define BAT_LOW     3000
+#define BAT_FULL    3400
+
+// VOLUME LEVEL 
+#define VOL_X_POS  90
+#define VOL_Y_POS   0
+#define VOL_WIDTH   4
+#define VOL_HEIGHT  8
+
+// RADIO LEVEL
+#define RADIO_LEVEL_X_POS 98
+#define RADIO_LEVEL_Y_POS 8
+
 
 
 //************************** OLED ************************************
@@ -34,7 +54,7 @@ char tmp[12];
 char RDSName[12];
 RADIO_FREQ freq;
 int volume = 5;
-float volts;
+long volts;
 boolean lowVolts = false;
 unsigned long timerLowVoltage;
 boolean oledIsOn;
@@ -215,16 +235,26 @@ void updateDisplay() {
       sprintf(tmp, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
       u8g2.drawStr(0,8, tmp);
     }
-    sprintf(tmp, "%d.%02d", (int)volts/1000, (int)(volts/10)%100);
+    sprintf(tmp, "%d.%02d", (unsigned int)volts/1000, (unsigned int)(volts/10)%100);
     //u8g2.drawStr(100,8, tmp);
 
-    for (unsigned char i=0; i<(ri.rssi/4); i++) {
-      u8g2.drawVLine(98+(2*i), 8-i, i);
+    // BATTERY
+    u8g2.drawBox(BAT_X_POS+BAT_LENGTH, BAT_Y_POS+2, 2, 2);
+    u8g2.drawFrame(BAT_X_POS , BAT_Y_POS, BAT_LENGTH, BAT_HEIGHT);
+    if (volts>BAT_LOW) {
+      u8g2.drawBox(BAT_X_POS , BAT_Y_POS, ((BAT_LENGTH-2)*(volts-BAT_LOW))/(BAT_FULL-BAT_LOW), BAT_HEIGHT);
+    }
+  
+    // VOL
+    u8g2.drawFrame(VOL_X_POS, VOL_Y_POS, VOL_WIDTH, VOL_HEIGHT);  
+    u8g2.drawBox(VOL_X_POS, VOL_Y_POS+VOL_HEIGHT-(volume/2), VOL_WIDTH, volume/2);
+
+    // RADIO
+    for (unsigned char i=0; i<(ri.rssi/8); i++) {
+      u8g2.drawVLine(RADIO_LEVEL_X_POS+(2*i), RADIO_LEVEL_Y_POS-i, i);
     }
     
-    u8g2.drawFrame(80, 0, 4, 8);  
-    u8g2.drawBox(80, 8-(volume/2), 4, volume/2);
- 
+
     u8g2.setFont(u8g2_font_fub14_tf);
     if (lowVolts) {
       u8g2.drawStr(0,40, "LOW BAT");
