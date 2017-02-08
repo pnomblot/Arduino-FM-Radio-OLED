@@ -24,7 +24,7 @@
 
 //********************* icons **************************************** 
 // BATTERY LEVEL 
-#define BAT_X_POS  72
+#define BAT_X_POS  90
 #define BAT_Y_POS   2 
 #define BAT_HEIGHT  6
 #define BAT_LENGTH  8
@@ -32,15 +32,22 @@
 #define BAT_FULL    3400
 
 // VOLUME LEVEL 
-#define VOL_X_POS  90
+#define VOL_X_POS  105
 #define VOL_Y_POS   0
 #define VOL_WIDTH   3
 #define VOL_HEIGHT  8
 
 // RADIO LEVEL
-#define RADIO_LEVEL_X_POS 98
+#define RADIO_LEVEL_X_POS 110
 #define RADIO_LEVEL_Y_POS 8
 
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define FREQSTRSIZE 12
+
+
+#define FMIN 8500    // FMIN for display only
+#define FMAX 11000   // FMAX for display only
 
 
 //************************** OLED ************************************
@@ -50,7 +57,7 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 //************************** RADIO **********************************
 
 //uint16_t g_block1;
-char tmp[12];
+char tmp[FREQSTRSIZE];
 char RDSName[12];
 RADIO_FREQ freq;
 int volume = 5;
@@ -85,12 +92,10 @@ void setup() {
   radio.setMono(false);
   radio.setMute(false);
   radio.setVolume(volume);
-
-  
   // setup the information chain for RDS data.
   radio.attachReceiveRDS(RDS_process);
   rds.attachServicenNameCallback(DisplayRDSName);
-
+  
   delay(500);
   u8g2.begin();
 }
@@ -183,11 +188,10 @@ void seekAuto (int step)
       if (freq >radio.getMaxFrequency())  freq = radio.getMinFrequency();    
       if (freq <radio.getMinFrequency())  freq = radio.getMaxFrequency();
       radio.clearRDS();
-      sprintf(RDSName, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
-
+      radio.formatFrequency(RDSName, FREQSTRSIZE);
       radio.setFrequency(freq);
       updateDisplay();
-      delay(100);
+      delay(50);
       radio.getRadioInfo(&ri);      
       if (ri.rssi>8  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
         break;
@@ -195,7 +199,6 @@ void seekAuto (int step)
         freq += radio.getFrequencyStep();
       } 
     } 
-
   EEPROMSaveFreq();
 }
 
@@ -216,11 +219,11 @@ void stopOled() {
 
 
 void startOled() {
-    if (oledIsOn == false) { 
-      digitalWrite(oledVcc, HIGH);
-      delay(1000);
-      u8g2.begin();
-    }  
+  if (oledIsOn == false) { 
+    digitalWrite(oledVcc, HIGH);
+    delay(1000);
+    u8g2.begin();
+  }  
 }  
 
 
@@ -231,38 +234,45 @@ void updateDisplay() {
   u8g2.firstPage();
   u8g2.setFont(u8g2_font_5x7_tr);
   do {  
-    if (!lowVolts) {
-      sprintf(tmp, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
+      radio.formatFrequency(tmp, FREQSTRSIZE);
       u8g2.drawStr(0,8, tmp);
-    }
-    sprintf(tmp, "%d.%02d", (unsigned int)volts/1000, (unsigned int)(volts/10)%100);
-    //u8g2.drawStr(100,8, tmp);
 
-    // BATTERY
-    u8g2.drawBox(BAT_X_POS+BAT_LENGTH, BAT_Y_POS+2, 2, 2);
-    u8g2.drawFrame(BAT_X_POS , BAT_Y_POS, BAT_LENGTH, BAT_HEIGHT);
-    if (volts>BAT_LOW) {
-      u8g2.drawBox(BAT_X_POS , BAT_Y_POS, ((BAT_LENGTH-2)*(volts-BAT_LOW))/(BAT_FULL-BAT_LOW), BAT_HEIGHT);
-    }
+      // BATTERY
+      u8g2.drawBox(BAT_X_POS+BAT_LENGTH, BAT_Y_POS+2, 2, 2);
+      u8g2.drawFrame(BAT_X_POS , BAT_Y_POS, BAT_LENGTH, BAT_HEIGHT);
+      if (volts>BAT_LOW) {
+        u8g2.drawBox(BAT_X_POS , BAT_Y_POS, ((BAT_LENGTH-2)*(volts-BAT_LOW))/(BAT_FULL-BAT_LOW), BAT_HEIGHT);
+      }
   
-    // VOL
-    u8g2.drawFrame(VOL_X_POS, VOL_Y_POS, VOL_WIDTH, VOL_HEIGHT);  
-    u8g2.drawBox(VOL_X_POS, VOL_Y_POS+VOL_HEIGHT-(volume/2), VOL_WIDTH, volume/2);
+      // VOL
+      u8g2.drawFrame(VOL_X_POS, VOL_Y_POS, VOL_WIDTH, VOL_HEIGHT);  
+      u8g2.drawBox(VOL_X_POS, VOL_Y_POS+VOL_HEIGHT-(volume/2), VOL_WIDTH, volume/2);
 
-    // RADIO
-    for (unsigned char i=0; i<(ri.rssi/4); i++) {
-      u8g2.drawVLine(RADIO_LEVEL_X_POS+(2*i), RADIO_LEVEL_Y_POS-i, i);
-    }
+      // RADIO
+      for (unsigned char i=0; i<(ri.rssi/4); i++) {
+        u8g2.drawVLine(RADIO_LEVEL_X_POS+(2*i), RADIO_LEVEL_Y_POS-i, i);
+      }
     
-
-    u8g2.setFont(u8g2_font_fub14_tf);
-    if (lowVolts) {
-      u8g2.drawStr(0,40, "LOW BAT");
-    } else {
-      u8g2.drawStr(0,40, RDSName);
-    }
+      u8g2.setFont(u8g2_font_fub14_tf);
+      if (lowVolts) {
+        u8g2.drawStr(0,40, "LOW BAT");
+      } else {
+        u8g2.drawStr(0,40, RDSName);
+      }
+      
+      u8g2.drawLine(0, SCREEN_HEIGHT-1, SCREEN_WIDTH-1, SCREEN_HEIGHT-1 );
+      for (RADIO_FREQ f=FMIN; f<=FMAX; f+=100 ) {
+        unsigned int x = ((f-FMIN)*12)/((FMAX-FMIN)/10);
+        if (f%500==0) {
+          u8g2.drawVLine(x+4, SCREEN_HEIGHT-8, 8);
+        } else {
+          u8g2.drawVLine(x+4, SCREEN_HEIGHT-4, 4);
+        }
+      }
+      unsigned int x = 4+((freq-FMIN)*12)/((FMAX-FMIN)/10);        
+      u8g2.drawTriangle(x-3, 54, x, 60, x+3, 54);
+      
     } while( u8g2.nextPage() );
-
 }
 
 
