@@ -30,6 +30,7 @@
 #define BAT_LENGTH  8
 #define BAT_LOW     3000
 #define BAT_FULL    3400
+#define LOW_BAT     "LOW BAT"
 
 // VOLUME LEVEL 
 #define VOL_X_POS  105
@@ -255,9 +256,9 @@ void updateDisplay() {
     
       u8g2.setFont(u8g2_font_fub14_tf);
       if (lowVolts) {
-        u8g2.drawStr(0,40, "LOW BAT");
+        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(LOW_BAT))/2,40, LOW_BAT);
       } else {
-        u8g2.drawStr(0,40, RDSName);
+        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(RDSName))/2,40, RDSName);
       }
       
       u8g2.drawLine(0, SCREEN_HEIGHT-1, SCREEN_WIDTH-1, SCREEN_HEIGHT-1 );
