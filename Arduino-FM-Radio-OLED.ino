@@ -19,8 +19,8 @@
 #define push           11
 
 //********************* Battery ************************************** 
-#define lowVoltageWarning  2180    // Warn low battery volts.
-#define lowVoltsCutoff     2900    // Kill power to display and sleep ATmega328.
+#define lowVoltageWarning  3180    // Warn low battery volts.
+#define lowVoltsCutoff     3900    // Kill power to display and sleep ATmega328.
 
 //********************* icons **************************************** 
 // BATTERY LEVEL 
@@ -59,7 +59,7 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 
 //uint16_t g_block1;
 char tmp[FREQSTRSIZE];
-char RDSName[12];
+char RDSName[FREQSTRSIZE];
 RADIO_FREQ freq;
 int volume = 5;
 long volts;
