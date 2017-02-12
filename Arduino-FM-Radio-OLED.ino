@@ -8,6 +8,7 @@
 
 #define EEPROM_FreqH    0      // EEPROM locations
 #define EEPROM_FreqL    1      // EEPROM locations
+#define EEPROM_VOL      2      // EEPROM locations
 
 // Pin connection
 #define resetRadio     2
@@ -16,11 +17,11 @@
 #define volDown        8
 #define volUp          9
 #define channelUp      10
-#define push           11
+#define push           11       // actuzly used to save station and volume
 
 //********************* Battery ************************************** 
-#define lowVoltageWarning  3180    // Warn low battery volts.
-#define lowVoltsCutoff     3900    // Kill power to display and sleep ATmega328.
+#define lowVoltageWarning  3080    // Warn low battery volts.
+#define lowVoltsCutoff     2900    // Kill power to display and sleep ATmega328.
 
 //********************* icons **************************************** 
 // BATTERY LEVEL 
@@ -54,7 +55,6 @@
 //************************** OLED ************************************
 U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 
-
 //************************** RADIO **********************************
 
 //uint16_t g_block1;
@@ -86,7 +86,7 @@ void setup() {
   
   radio.init();
 //  radio.debugEnable();    //debug infos to the Serial port
-  EEPROMReadFreq();
+  EEPROMRead();
   sprintf(RDSName, "%d.%d MHz", (unsigned int)freq/100, (unsigned int)(freq%100/10));
 
   radio.setBandFrequency(RADIO_BAND_FM,freq);
@@ -126,14 +126,13 @@ void loop() {
    
    if ((!lowVolts) && (volts < lowVoltageWarning)) {
      lowVolts = true;  
-     updateDisplay();
    }   
    
    
 
 
   if (digitalRead(push) == LOW) {
-      EEPROMSaveFreq();
+      EEPROMSave();
   }
 
   if (digitalRead(volUp) == LOW) {
@@ -189,28 +188,29 @@ void seekAuto (int step)
       if (freq >radio.getMaxFrequency())  freq = radio.getMinFrequency();    
       if (freq <radio.getMinFrequency())  freq = radio.getMaxFrequency();
       radio.clearRDS();
-      radio.formatFrequency(RDSName, FREQSTRSIZE);
       radio.setFrequency(freq);
+      radio.formatFrequency(RDSName, FREQSTRSIZE);
       updateDisplay();
       delay(50);
       radio.getRadioInfo(&ri);      
-      if (ri.rssi>8  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
+      if (ri.rssi>10  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
         break;
-      } else {
-        freq += radio.getFrequencyStep();
       } 
     } 
-  EEPROMSaveFreq();
 }
 
 
-void EEPROMSaveFreq() {
+void EEPROMSave() {
   EEPROM.write(EEPROM_FreqL, (unsigned char)(freq & 0xFF));
   EEPROM.write(EEPROM_FreqH, (unsigned char)((freq>>8) & 0xFF));
+  EEPROM.write(EEPROM_VOL, volume);
 }
 
-void EEPROMReadFreq() {
+void EEPROMRead() {
   freq =  EEPROM.read(EEPROM_FreqL) + (EEPROM.read(EEPROM_FreqH) << 8) ;
+  volume =  EEPROM.read(EEPROM_VOL);
+  if (volume > 15) volume=0; 
+
 }
 
 void stopOled() {
