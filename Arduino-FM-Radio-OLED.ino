@@ -1,29 +1,43 @@
-#include <Wire.h>
-#include <SI4703.h>     // http://www.mathertel.de/Arduino/RadioLibrary.aspx  https://github.com/mathertel/Radio
-#include <RDSParser.h>
+#include <SI4703.h>     // http://www.mathertel.de/Arduino/RadioLibrary.aspx 
+#include <RDSParser.h>  // https://github.com/mathertel/Radio
 #include "LowPower.h"
 #include <EEPROM.h>
-#include <U8g2lib.h>
+#include <U8g2lib.h>    // https://github.com/olikraus/u8g2/wiki/u8g2reference#reference
 
 
-#define EEPROM_FreqH    0      // EEPROM locations
-#define EEPROM_FreqL    1      // EEPROM locations
-#define EEPROM_VOL      2      // EEPROM locations
+//************************* EEPROM internal usage ****************************
+#define EEPROM_FreqH   0       
+#define EEPROM_FreqL   1       
+#define EEPROM_VOL     2       
 
-// Pin connection
-#define resetRadio     2
-#define oledVcc        3
-#define channelDown    7
-#define volDown        8
-#define volUp          9
-#define channelUp      10
-#define push           11
+//******************************* Radio **************************************
+#define resetRadio      2      // SI4703 reset pin    
+#define FMIN 8500              // FMIN for display only
+#define FMAX 11000             // FMAX for display only
 
-//********************* Battery ************************************** 
+//******************************* OLED ***************************************
+#define oledVcc         3      // OLED VCC (for power down operation)
+
+
+//****************************** 5 way ALPS switch ***************************
+//          PIN_VOL_UP  1------------o   o------6  PIN_PUSH     
+//     
+//    PIN_CHANNEL_DOWN  2--------o   o   o------5  PIN_CHANNEL_UP        
+//                                    \    
+//        PIN_VOL_DOWN  3------------o  --------4  Common  
+
+#define PIN_CHANNEL_DOWN     7      
+#define PIN_VOL_DOWN         8      
+#define PIN_VOL_UP           9      
+#define PIN_CHANNEL_UP      10      
+#define PIN_PUSH            11      
+
+
+//********************************** Battery ********************************* 
 #define lowVoltageWarning  3080    // Warn low battery volts.
 #define lowVoltsCutoff     2900    // Kill power to display and sleep ATmega328.
 
-//********************* icons **************************************** 
+//*********************************** icons ********************************** 
 // BATTERY LEVEL 
 #define BAT_X_POS  90
 #define BAT_Y_POS   2 
@@ -48,16 +62,12 @@
 #define FREQSTRSIZE 12
 
 
-#define FMIN 8500    // FMIN for display only
-#define FMAX 11000   // FMAX for display only
 
 
 //************************** OLED ************************************
 U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0);
 
-//************************** RADIO **********************************
 
-//uint16_t g_block1;
 char tmp[FREQSTRSIZE];
 char RDSName[FREQSTRSIZE];
 RADIO_FREQ freq;
@@ -71,13 +81,14 @@ RDSParser rds;
 SI4703 radio;
 
 
+//************************************ SETUP ******************************
 void setup() {
   Serial.begin(9600);
-  pinMode(volDown, INPUT_PULLUP);
-  pinMode(volUp, INPUT_PULLUP);
-  pinMode(channelUp, INPUT_PULLUP);
-  pinMode(channelDown, INPUT_PULLUP);  
-  pinMode(push, INPUT_PULLUP);
+  pinMode(PIN_VOL_DOWN, INPUT_PULLUP);
+  pinMode(PIN_VOL_UP, INPUT_PULLUP);
+  pinMode(PIN_CHANNEL_UP, INPUT_PULLUP);
+  pinMode(PIN_CHANNEL_DOWN, INPUT_PULLUP);  
+  pinMode(PIN_PUSH, INPUT_PULLUP);
   pinMode(oledVcc, OUTPUT);
 
   oledIsOn = false;
@@ -104,7 +115,7 @@ void setup() {
 
 
 
-
+//******************************* MAIN LOOP ***************************
 void loop() {
    radio.checkRDS();
    u8g2.firstPage();
@@ -131,26 +142,26 @@ void loop() {
    
 
 
-  if (digitalRead(push) == LOW) {
+  if (digitalRead(PIN_PUSH) == LOW) {
       EEPROMSave();
   }
 
-  if (digitalRead(volUp) == LOW) {
+  if (digitalRead(PIN_VOL_UP) == LOW) {
     if (volume < 15) volume++; 
     radio.setVolume(volume);
   }
   
-  if (digitalRead(volDown) == LOW) {
+  if (digitalRead(PIN_VOL_DOWN) == LOW) {
      if (volume > 0) volume--;
      radio.setVolume(volume);
   }  
   
-  if (digitalRead(channelUp) == LOW) {
+  if (digitalRead(PIN_CHANNEL_UP) == LOW) {
      startOled();
      seekAuto(radio.getFrequencyStep());
   }
   
-  if (digitalRead(channelDown) == LOW) {
+  if (digitalRead(PIN_CHANNEL_DOWN) == LOW) {
      startOled();
      seekAuto(-radio.getFrequencyStep());
   }
@@ -193,7 +204,7 @@ void seekAuto (int step)
       updateDisplay();
       delay(50);
       radio.getRadioInfo(&ri);      
-      if (ri.rssi>10  || digitalRead(volUp)==LOW   || digitalRead(volDown) == LOW || digitalRead(channelUp)==LOW || digitalRead(channelDown)==LOW) {
+      if (ri.rssi>10  || digitalRead(PIN_VOL_UP)==LOW   || digitalRead(PIN_VOL_DOWN) == LOW || digitalRead(PIN_CHANNEL_UP)==LOW || digitalRead(PIN_CHANNEL_DOWN)==LOW) {
         break;
       } 
     } 
