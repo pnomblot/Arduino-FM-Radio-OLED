@@ -17,7 +17,7 @@
 #define volDown        8
 #define volUp          9
 #define channelUp      10
-#define push           11       // actuzly used to save station and volume
+#define push           11
 
 //********************* Battery ************************************** 
 #define lowVoltageWarning  3080    // Warn low battery volts.
