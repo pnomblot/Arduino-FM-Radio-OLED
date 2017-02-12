@@ -267,16 +267,19 @@ void updateDisplay() {
     
       u8g2.setFont(u8g2_font_fub14_tf);
       if (lowVolts) {
-        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(LOW_BAT))/2,40, LOW_BAT);
+        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(LOW_BAT))/2,36, LOW_BAT);
       } else {
-        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(RDSName))/2,40, RDSName);
+        u8g2.drawStr((SCREEN_WIDTH-u8g2.getStrWidth(RDSName))/2,36, RDSName);
       }
       
+      u8g2.setFont(u8g2_font_u8glib_4_tf);
       u8g2.drawLine(0, SCREEN_HEIGHT-1, SCREEN_WIDTH-1, SCREEN_HEIGHT-1 );
       for (RADIO_FREQ f=FMIN; f<=FMAX; f+=100 ) {
         unsigned int x = ((f-FMIN)*12)/((FMAX-FMIN)/10);
         if (f%500==0) {
           u8g2.drawVLine(x+4, SCREEN_HEIGHT-8, 8);
+          sprintf(tmp, "%d", (unsigned int)f/100);
+          u8g2.drawStr(x,SCREEN_HEIGHT-12, tmp);
         } else {
           u8g2.drawVLine(x+4, SCREEN_HEIGHT-4, 4);
         }
